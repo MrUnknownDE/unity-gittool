@@ -26,7 +26,15 @@ jobs:
 
       - name: Create VCC Package Zip
         run: |
-          zip -r ${{ steps.metadata.outputs.pkg_name }}-${{ github.ref_name }}.zip package.json README.md Editor/ Editor.meta package.json.meta README.md.meta
+          mkdir -p staging
+          cp package.json README.md staging/
+          cp -r Editor/ staging/
+          cp Editor.meta package.json.meta README.md.meta staging/ 2>/dev/null || true
+          cd staging
+          zip -r ../${{ steps.metadata.outputs.pkg_name }}-${{ github.ref_name }}.zip *
+          cd ..
+          echo "--- ZIP INHALT PRÜFUNG ---"
+          unzip -l ${{ steps.metadata.outputs.pkg_name }}-${{ github.ref_name }}.zip
 
       - name: Upload GitHub Release Asset
         uses: softprops/action-gh-release@v2
