@@ -1,0 +1,77 @@
+name: VCC Release Automation
+
+on:
+  push:
+    tags:
+      - "v*" # Startet bei v1.0.2, v1.1.0 etc.
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract Metadata
+        id: metadata
+        run: |
+          VERSION=$(jq -r .version package.json)
+          PKG_NAME=$(jq -r .name package.json)
+          DISPLAY_NAME=$(jq -r .displayName package.json)
+          DESCRIPTION=$(jq -r .description package.json)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "pkg_name=$PKG_NAME" >> $GITHUB_OUTPUT
+          echo "display_name=$DISPLAY_NAME" >> $GITHUB_OUTPUT
+          echo "description=$DESCRIPTION" >> $GITHUB_OUTPUT
+
+      - name: Create VCC Package Zip
+        run: |
+          # Wir packen nur die relevanten Dateien ohne den Repo-Hauptordner
+          zip -r ${{ steps.metadata.outputs.pkg_name }}-${{ github.ref_name }}.zip package.json README.md Editor/ Editor.meta package.json.meta README.md.meta
+
+      - name: Upload GitHub Release Asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.metadata.outputs.pkg_name }}-${{ github.ref_name }}.zip
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+
+      - name: Update VCC Index
+        run: |
+          # Wechsel zum gh-pages Branch (oder erstelle ihn, falls er fehlt)
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          
+          git fetch origin gh-pages || git checkout --orphan gh-pages
+          git checkout gh-pages || git checkout -b gh-pages
+
+          # Falls die index.json noch nicht existiert, Basis-Struktur anlegen
+          if [ ! -f index.json ]; then
+            echo '{"name":"mrunknownde VCC Repo","id":"de.mrunknownde.vccrepo","url":"https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/index.json","author":"mrunknownde","packages":{}}' > index.json
+          fi
+
+          # Neue Version in die index.json injizieren
+          ZIP_URL="https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/${{ steps.metadata.outputs.pkg_name }}-${{ github.ref_name }}.zip"
+          
+          jq --arg ver "${{ steps.metadata.outputs.version }}" \
+             --arg name "${{ steps.metadata.outputs.pkg_name }}" \
+             --arg disp "${{ steps.metadata.outputs.display_name }}" \
+             --arg desc "${{ steps.metadata.outputs.description }}" \
+             --arg url "$ZIP_URL" \
+             '.packages[$name].versions[$ver] = {
+                "name": $name,
+                "version": $ver,
+                "displayName": $disp,
+                "description": $desc,
+                "unity": "2022.3",
+                "url": $url
+             }' index.json > temp.json && mv temp.json index.json
+
+          git add index.json
+          git commit -m "Add version ${{ github.ref_name }} to VCC index"
+          git push origin gh-pages
