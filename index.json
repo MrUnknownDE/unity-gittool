@@ -6,6 +6,14 @@
   "packages": {
     "de.mrunknownde.gittool": {
       "versions": {
+        "1.0.1": {
+          "name": "de.mrunknownde.gittool",
+          "version": "1.0.1",
+          "displayName": "VRChat Git Control Tool",
+          "url": "https://github.com/MrUnknownDE/unity-gittool/archive/refs/tags/v1.0.1.zip",
+          "unity": "2022.3",
+          "description": "A lightweight, integrated Git panel for Unity."
+        },
         "1.0.0": {
           "name": "de.mrunknownde.gittool",
           "version": "1.0.0",
