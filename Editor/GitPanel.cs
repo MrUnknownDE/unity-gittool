@@ -7,6 +7,7 @@ using System.Collections.Generic;
 public class GitPanel : EditorWindow
 {
     private string commitMessage = "";
+    private string remoteUrlInput = ""; // NEU: Speicher für die Remote-URL
     private bool hasRepo = false;
     private string[] changedFiles = new string[0];
     private Vector2 scrollPositionChanges;
@@ -18,7 +19,7 @@ public class GitPanel : EditorWindow
     private struct CommitInfo { public string hash; public string date; public string message; }
     private List<CommitInfo> commitHistory = new List<CommitInfo>();
 
-    [MenuItem("Tools/Git-Tool")]
+    [MenuItem("Tools/MrUnknownDE/Git-Tool")]
     public static void ShowWindow()
     {
         GitPanel window = GetWindow<GitPanel>("Source Control");
@@ -27,8 +28,24 @@ public class GitPanel : EditorWindow
 
     private void OnEnable()
     {
+        RefreshData();
+    }
+
+    private void OnFocus()
+    {
+        RefreshData();
+    }
+
+    public void RefreshData()
+    {
         CheckRepoStatus();
-        SetDefaultCommitMessage();
+        
+        if (string.IsNullOrWhiteSpace(commitMessage) || commitMessage.StartsWith("Auto-Save:"))
+        {
+            SetDefaultCommitMessage();
+        }
+        
+        Repaint(); 
     }
 
     private void SetDefaultCommitMessage()
@@ -58,13 +75,42 @@ public class GitPanel : EditorWindow
     private void RenderInitUI()
     {
         EditorGUILayout.HelpBox("No local Git repository found. Initialize current project folder?", MessageType.Warning);
+        
+        GUILayout.Space(10);
+        GUILayout.Label("Remote Repository URL (Optional):", EditorStyles.boldLabel);
+        remoteUrlInput = EditorGUILayout.TextField(remoteUrlInput, GUILayout.Height(25));
+        EditorGUILayout.HelpBox("e.g., https://github.com/user/repo.git or git@gitea.domain.com:user/repo.git", MessageType.Info);
+        GUILayout.Space(10);
+
         if (GUILayout.Button("Initialize Repository", GUILayout.Height(30)))
         {
             RunGitCommand("init");
+            
+            // Branch direkt sauber auf "main" setzen (verhindert Konflikte mit alten "master" Defaults)
+            RunGitCommand("branch -M main");
+
+            // Remote URL hinzufügen, falls angegeben
+            if (!string.IsNullOrWhiteSpace(remoteUrlInput))
+            {
+                RunGitCommand($"remote add origin \"{remoteUrlInput.Trim()}\"");
+            }
+
             GenerateUnityGitIgnore();
             RunGitCommand("add .gitignore");
             RunGitCommand("commit -m \"Initial commit (GitIgnore)\"");
-            CheckRepoStatus();
+
+            // Initialen Push ausführen, wenn ein Remote existiert
+            if (!string.IsNullOrWhiteSpace(remoteUrlInput))
+            {
+                RunGitCommand("push -u origin main");
+                UnityEngine.Debug.Log("Git-Tool: Repository initialized and pushed to remote!");
+            }
+            else
+            {
+                UnityEngine.Debug.Log("Git-Tool: Local repository initialized successfully.");
+            }
+
+            RefreshData();
         }
     }
 
@@ -81,8 +127,8 @@ public class GitPanel : EditorWindow
             RunGitCommand($"commit -m \"{commitMessage}\"");
             RunGitCommand("push");
             
-            SetDefaultCommitMessage(); 
-            CheckRepoStatus();  
+            commitMessage = ""; 
+            RefreshData();  
             UnityEngine.Debug.Log("Git-Tool: Changes successfully pushed!");
         }
         GUI.backgroundColor = Color.white; 
@@ -95,8 +141,7 @@ public class GitPanel : EditorWindow
         GUILayout.Label($"CHANGES ({changedFiles.Length})", EditorStyles.boldLabel);
         if (GUILayout.Button("↻", GUILayout.Width(25))) 
         {
-            CheckRepoStatus();
-            SetDefaultCommitMessage();
+            RefreshData();
         }
         EditorGUILayout.EndHorizontal();
 
@@ -274,5 +319,21 @@ obj
             using (Process p = Process.Start(startInfo)) { p.WaitForExit(); return p.StandardOutput.ReadToEnd(); }
         }
         catch { return ""; }
+    }
+}
+
+public class GitSaveListener : UnityEditor.AssetModificationProcessor
+{
+    public static string[] OnWillSaveAssets(string[] paths)
+    {
+        EditorApplication.delayCall += () =>
+        {
+            if (EditorWindow.HasOpenInstances<GitPanel>())
+            {
+                EditorWindow.GetWindow<GitPanel>().RefreshData();
+            }
+        };
+        
+        return paths; 
     }
 }
