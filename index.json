@@ -34,9 +34,9 @@
           "name": "de.mrunknownde.vcc-tools",
           "version": "1.0.0",
           "displayName": "MrUnknownDE's VRChat Tools",
-          "url": "https://github.com/MrUnknownDE/vcc-tools/archive/refs/tags/v1.0.0.zip",
+          "description": "A lightweight, integrated Git panel for Unity.",
           "unity": "2022.3",
-          "description": "A lightweight, integrated Git panel for Unity."
+          "url": "https://github.com/MrUnknownDE/vcc-tools/releases/download/v1.0.4/de.mrunknownde.vcc-tools-v1.0.4.zip"
         }
       }
     }
