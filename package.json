@@ -1,0 +1,12 @@
+{
+  "name": "de.mrunknownde.gittool",
+  "version": "1.0.0",
+  "displayName": "VRChat Git Control Tool",
+  "description": "A lightweight, integrated Git panel for Unity. Ideal for VRChat World/Avatar Creators to easily push commits directly from the editor to Gitea/GitHub/GitLab and other Git hosting services.",
+  "unity": "2022.3",
+  "author": {
+    "name": "mrunknownde"
+  },
+  "dependencies": {},
+  "vpmDependencies": {}
+}

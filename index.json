@@ -1,0 +1,28 @@
+{
+  "name": "MrUnknownDE's VCC Tools",
+  "id": "de.mrunknownde.vccrepo",
+  "url": "https://vcc.mrunk.de/index.json",
+  "author": "mrunknownde",
+  "packages": {
+    "de.mrunknownde.gittool": {
+      "versions": {
+        "1.0.1": {
+          "name": "de.mrunknownde.gittool",
+          "version": "1.0.1",
+          "displayName": "VRChat Git Control Tool",
+          "url": "https://github.com/MrUnknownDE/unity-gittool/archive/refs/tags/v1.0.1.zip",
+          "unity": "2022.3",
+          "description": "A lightweight, integrated Git panel for Unity."
+        },
+        "1.0.0": {
+          "name": "de.mrunknownde.gittool",
+          "version": "1.0.0",
+          "displayName": "VRChat Git Control Tool",
+          "description": "A lightweight, integrated Git panel for Unity. Ideal for VRChat World/Avatar Creators to easily push commits directly from the editor to Gitea/GitHub/GitLab and other Git hosting services.",
+          "unity": "2022.3",
+          "url": "https://github.com/MrUnknownDE/unity-vcc/releases/download/v1.0.2/de.mrunknownde.gittool-v1.0.2.zip"
+        }
+      }
+    }
+  }
+}
