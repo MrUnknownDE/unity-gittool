@@ -17,7 +17,7 @@ You can add this tool as a custom package directly into your VCC.
 1. Open the VRChat Creator Companion.
 2. Navigate to **Settings** -> **Packages**.
 3. Click on **Add Repository**.
-4. Enter your custom repo URL: `[YOUR_INDEX_JSON_URL_HERE]`
+4. Enter your custom repo URL: `https://vcc.mrunk.de/index.json`
 5. In your project views, under "Manage Project", the **VRChat Git Control Tool** will now appear. Simply click the plus icon to add it.
 
 ## 🛠️ Manual Installation

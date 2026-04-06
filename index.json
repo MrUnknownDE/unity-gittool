@@ -1,7 +1,7 @@
 {
   "name": "MrUnknownDE's VCC Tools",
   "id": "de.mrunknownde.vccrepo",
-  "url": "https://mrunknownde.github.io/unity-gittool/index.json",
+  "url": "https://vcc.mrunk.de/index.json",
   "author": "mrunknownde",
   "packages": {
     "de.mrunknownde.gittool": {
