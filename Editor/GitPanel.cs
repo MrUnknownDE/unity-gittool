@@ -13,6 +13,10 @@ public class GitPanel : EditorWindow
     private bool isGitInstalled = true;
     private bool hasRepo = false;
     
+    // NEU: Project Settings Checks
+    private bool settingsCorrect = true;
+    private string settingsWarning = "";
+
     private string currentBranchName = "unknown";
     private string[] availableBranches = new string[0]; 
     private int selectedBranchIndex = 0; 
@@ -24,7 +28,6 @@ public class GitPanel : EditorWindow
     private int selectedTab = 0;
     private string[] tabNames = { "Changes", "History" };
     
-    // NEU: Settings & Override
     private bool showSettings = false;
     private string webUrlOverride = "";
     private string prefsKey = "";
@@ -36,15 +39,13 @@ public class GitPanel : EditorWindow
     public static void ShowWindow()
     {
         GitPanel window = GetWindow<GitPanel>("GIT Version Control System");
-        window.minSize = new Vector2(350, 550);
+        window.minSize = new Vector2(350, 600);
     }
 
     private void OnEnable() 
     { 
-        // Generiert einen einzigartigen Key für dieses spezifische Unity-Projekt
         prefsKey = $"GitTool_WebUrl_{Application.dataPath.GetHashCode()}";
         webUrlOverride = EditorPrefs.GetString(prefsKey, "");
-        
         RefreshData(); 
     }
     
@@ -53,8 +54,9 @@ public class GitPanel : EditorWindow
     public void RefreshData()
     {
         CheckGitInstallation();
+        CheckUnitySettings(); // NEU: Unity Settings prüfen
+
         if (!isGitInstalled) return;
-        
         CheckRepoStatus();
         
         if (hasRepo) 
@@ -79,6 +81,33 @@ public class GitPanel : EditorWindow
         } catch { isGitInstalled = false; }
     }
 
+    // --- NEU: Prüft die Projekt-Einstellungen für Source Control ---
+    private void CheckUnitySettings()
+    {
+        settingsCorrect = true;
+        settingsWarning = "";
+
+        if (EditorSettings.externalVersionControl != "Visible Meta Files")
+        {
+            settingsCorrect = false;
+            settingsWarning += "• Version Control Mode must be 'Visible Meta Files'\n";
+        }
+
+        if (EditorSettings.serializationMode != SerializationMode.ForceText)
+        {
+            settingsCorrect = false;
+            settingsWarning += "• Asset Serialization must be 'Force Text'\n";
+        }
+    }
+
+    private void FixUnitySettings()
+    {
+        EditorSettings.externalVersionControl = "Visible Meta Files";
+        EditorSettings.serializationMode = SerializationMode.ForceText;
+        UnityEngine.Debug.Log("Git-Tool: Unity Project Settings updated for Git compatibility.");
+        RefreshData();
+    }
+
     private void SetDefaultCommitMessage() { commitMessage = $"Auto-Save: {System.DateTime.Now:yyyy-MM-dd HH:mm:ss}"; }
 
     private void OnGUI()
@@ -87,24 +116,35 @@ public class GitPanel : EditorWindow
         GUILayout.Label("GIT Version Control System", EditorStyles.boldLabel);
         if (hasRepo) GUILayout.Label($"Active Branch: {currentBranchName}", EditorStyles.miniLabel);
         GUILayout.Space(5);
+        
+        if (!settingsCorrect)
+        {
+            EditorGUILayout.BeginVertical("box");
+            EditorGUILayout.HelpBox("INCOMPATIBLE PROJECT SETTINGS:\n" + settingsWarning, MessageType.Error);
+            GUI.backgroundColor = new Color(1f, 0.5f, 0f);
+            if (GUILayout.Button("Fix Project Settings Now"))
+            {
+                FixUnitySettings();
+            }
+            GUI.backgroundColor = Color.white;
+            EditorGUILayout.EndVertical();
+            GUILayout.Space(10);
+        }
 
         if (!isGitInstalled) { RenderGitMissingUI(); return; }
         if (!hasRepo) { RenderInitUI(); return; }
 
-        // --- NEU: SETTINGS FOLDOUT ---
         showSettings = EditorGUILayout.Foldout(showSettings, "⚙️ Repository Settings");
         if (showSettings)
         {
             EditorGUILayout.BeginVertical("box");
             GUILayout.Label("Web Override (For custom SSH instances)", EditorStyles.miniBoldLabel);
-            
             EditorGUI.BeginChangeCheck();
             webUrlOverride = EditorGUILayout.TextField("Web URL:", webUrlOverride);
             if (EditorGUI.EndChangeCheck())
             {
                 EditorPrefs.SetString(prefsKey, webUrlOverride.Trim());
             }
-            EditorGUILayout.HelpBox("e.g. https://git.mrunk.de/mrunknownde/my-repo\nLeaves SSH untouched but fixes browser links.", MessageType.None);
             EditorGUILayout.EndVertical();
             GUILayout.Space(5);
         }
@@ -118,7 +158,7 @@ public class GitPanel : EditorWindow
 
     private void RenderGitMissingUI()
     {
-        EditorGUILayout.HelpBox("CRITICAL: Git not found. Please install Git and restart Unity.", MessageType.Error);
+        EditorGUILayout.HelpBox("CRITICAL: Git not found.", MessageType.Error);
         if (GUILayout.Button("Download Git for Windows", GUILayout.Height(30))) Application.OpenURL("https://git-scm.com/download/win");
     }
 
@@ -145,7 +185,6 @@ public class GitPanel : EditorWindow
 
     private void RenderGitUI()
     {
-        // --- BRANCH MANAGEMENT ---
         EditorGUILayout.BeginVertical("box");
         GUILayout.Label("Branch Management", EditorStyles.boldLabel);
         
@@ -180,8 +219,6 @@ public class GitPanel : EditorWindow
         EditorGUILayout.EndVertical();
 
         GUILayout.Space(10);
-
-        // --- COMMIT BEREICH ---
         commitMessage = EditorGUILayout.TextField(commitMessage, GUILayout.Height(25));
 
         EditorGUILayout.BeginHorizontal();
@@ -256,7 +293,6 @@ public class GitPanel : EditorWindow
 
     private void OpenCommitInBrowser(string hash)
     {
-        // NEU: Override Logik greift zuerst!
         if (!string.IsNullOrWhiteSpace(webUrlOverride))
         {
             string url = webUrlOverride;
@@ -266,7 +302,6 @@ public class GitPanel : EditorWindow
             return;
         }
 
-        // Standard Fallback Logik (wenn kein Override gesetzt ist)
         string remoteUrl = RunGitCommand("config --get remote.origin.url").Trim();
         if (string.IsNullOrEmpty(remoteUrl)) return;
 
@@ -277,7 +312,6 @@ public class GitPanel : EditorWindow
             if (firstColon != -1) remoteUrl = remoteUrl.Remove(firstColon, 1).Insert(firstColon, "/");
         }
         if (remoteUrl.EndsWith(".git")) remoteUrl = remoteUrl.Substring(0, remoteUrl.Length - 4);
-        
         Application.OpenURL($"{remoteUrl}/commit/{hash}");
     }
 
