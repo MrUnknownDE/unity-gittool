@@ -55,7 +55,7 @@ This tool is installed manually directly into your Unity project.
 
 Once installed, you can access the tools via the top menu bar in Unity:
 
-`Tools` -> `MrUnknownDE` -> `GIT Version Control`
+`Tools` -> `MrUnknownDE` -> `GIT Version Control`<br>
 `Tools` -> `MrUnknownDE` -> `Discord RPC`
 
 The tools will open as floating windows. You can easily dock them into your custom Unity layout (e.g., right next to the Inspector or Console).
