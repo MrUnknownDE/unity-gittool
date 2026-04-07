@@ -13,7 +13,6 @@ public class GitPanel : EditorWindow
     private bool isGitInstalled = true;
     private bool hasRepo = false;
     
-    // NEU: Project Settings Checks
     private bool settingsCorrect = true;
     private string settingsWarning = "";
 
@@ -39,7 +38,7 @@ public class GitPanel : EditorWindow
     public static void ShowWindow()
     {
         GitPanel window = GetWindow<GitPanel>("GIT Version Control System");
-        window.minSize = new Vector2(350, 600);
+        window.minSize = new Vector2(380, 600); // Etwas breiter gemacht für den neuen Button
     }
 
     private void OnEnable() 
@@ -54,7 +53,7 @@ public class GitPanel : EditorWindow
     public void RefreshData()
     {
         CheckGitInstallation();
-        CheckUnitySettings(); // NEU: Unity Settings prüfen
+        CheckUnitySettings(); 
 
         if (!isGitInstalled) return;
         CheckRepoStatus();
@@ -81,7 +80,6 @@ public class GitPanel : EditorWindow
         } catch { isGitInstalled = false; }
     }
 
-    // --- NEU: Prüft die Projekt-Einstellungen für Source Control ---
     private void CheckUnitySettings()
     {
         settingsCorrect = true;
@@ -116,7 +114,7 @@ public class GitPanel : EditorWindow
         GUILayout.Label("GIT Version Control System", EditorStyles.boldLabel);
         if (hasRepo) GUILayout.Label($"Active Branch: {currentBranchName}", EditorStyles.miniLabel);
         GUILayout.Space(5);
-        
+
         if (!settingsCorrect)
         {
             EditorGUILayout.BeginVertical("box");
@@ -195,6 +193,7 @@ public class GitPanel : EditorWindow
             if (EditorGUI.EndChangeCheck() && newIndex != selectedBranchIndex)
             {
                 RunGitCommand($"checkout \"{availableBranches[newIndex]}\"");
+                AssetDatabase.Refresh(); // Unity zwingen, den neuen Code vom anderen Branch zu laden
                 RefreshData();
                 return; 
             }
@@ -221,22 +220,60 @@ public class GitPanel : EditorWindow
         GUILayout.Space(10);
         commitMessage = EditorGUILayout.TextField(commitMessage, GUILayout.Height(25));
 
+        // --- HAUPTAKTIEN BEREICH ---
         EditorGUILayout.BeginHorizontal();
+        
+        // 1. Commit & Push
         GUI.backgroundColor = new Color(0.2f, 0.4f, 0.8f); 
-        if (GUILayout.Button("✓ Commit & Push", GUILayout.Height(30)))
+        if (GUILayout.Button("✓ Push", GUILayout.Height(30)))
         {
             if (string.IsNullOrWhiteSpace(commitMessage)) SetDefaultCommitMessage();
             RunGitCommand("add .");
             RunGitCommand($"commit -m \"{commitMessage}\"");
-            RunGitCommand("push -u origin HEAD");
-            commitMessage = ""; 
+            
+            string pushResult = RunGitCommand("push -u origin HEAD");
+            if (pushResult.Contains("rejected") || pushResult.Contains("fetch first"))
+            {
+                UnityEngine.Debug.LogError("Git-Tool: PUSH REJECTED! Jemand anderes hat Änderungen hochgeladen. Bitte klicke zuerst auf 'Pull'.");
+            }
+            else
+            {
+                UnityEngine.Debug.Log("Git-Tool: Changes successfully pushed!");
+                commitMessage = ""; 
+            }
             RefreshData();
         }
+
+        // 2. NEU: PULL (Sync)
+        GUI.backgroundColor = new Color(0.8f, 0.6f, 0.2f); // Orange/Gelb
+        if (GUILayout.Button("⬇️ Pull", GUILayout.Width(80), GUILayout.Height(30)))
+        {
+            UnityEngine.Debug.Log("Git-Tool: Lade Änderungen vom Server herunter...");
+            string pullResult = RunGitCommand("pull");
+            
+            // Ganz wichtig für Collaboration: Unity zwingen, die fremden Dateien einzulesen!
+            AssetDatabase.Refresh(); 
+
+            if (pullResult.Contains("CONFLICT"))
+            {
+                UnityEngine.Debug.LogError("Git-Tool: MERGE CONFLICT! Du und ein Freund haben dieselbe Datei bearbeitet. Bitte in VS Code auflösen!");
+                EditorUtility.DisplayDialog("Merge Conflict", "Es gibt Konflikte mit den Server-Daten!\n\nGit konnte die Änderungen nicht automatisch zusammenführen. Bitte öffne die roten Dateien in deinem Code-Editor und löse den Konflikt manuell auf.", "OK");
+            }
+            else
+            {
+                UnityEngine.Debug.Log("Git-Tool: Repository erfolgreich synchronisiert.");
+            }
+            RefreshData();
+        }
+
+        // 3. Revert
         GUI.backgroundColor = new Color(0.8f, 0.3f, 0.3f); 
-        if (GUILayout.Button("⎌ Revert All", GUILayout.Width(80), GUILayout.Height(30)))
+        if (GUILayout.Button("⎌ Revert", GUILayout.Width(80), GUILayout.Height(30)))
         {
             if (EditorUtility.DisplayDialog("Revert Changes?", "Discard ALL uncommitted changes?", "Yes", "Cancel")) {
-                RunGitCommand("reset --hard HEAD"); RunGitCommand("clean -fd"); RefreshData();
+                RunGitCommand("reset --hard HEAD"); RunGitCommand("clean -fd"); 
+                AssetDatabase.Refresh(); // Unity die alten Daten zeigen
+                RefreshData();
             }
         }
         GUI.backgroundColor = Color.white; 
@@ -361,8 +398,13 @@ public class GitPanel : EditorWindow
 
     public static string RunGitCommand(string args) {
         try {
-            ProcessStartInfo si = new ProcessStartInfo("git", args) { WorkingDirectory = Path.GetFullPath(Path.Combine(Application.dataPath, "..")), UseShellExecute = false, RedirectStandardOutput = true, CreateNoWindow = true };
-            using (Process p = Process.Start(si)) { string o = p.StandardOutput.ReadToEnd(); p.WaitForExit(); return o; }
+            ProcessStartInfo si = new ProcessStartInfo("git", args) { WorkingDirectory = Path.GetFullPath(Path.Combine(Application.dataPath, "..")), UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true };
+            using (Process p = Process.Start(si)) { 
+                string o = p.StandardOutput.ReadToEnd(); 
+                string e = p.StandardError.ReadToEnd();
+                p.WaitForExit(); 
+                return o + " " + e; 
+            }
         } catch { return ""; }
     }
 }
