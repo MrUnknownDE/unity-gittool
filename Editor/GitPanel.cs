@@ -7,7 +7,8 @@ using System.Collections.Generic;
 public class GitPanel : EditorWindow
 {
     private string commitMessage = "";
-    private string remoteUrlInput = ""; // NEU: Speicher für die Remote-URL
+    private string remoteUrlInput = ""; 
+    private bool isGitInstalled = true;
     private bool hasRepo = false;
     private string[] changedFiles = new string[0];
     private Vector2 scrollPositionChanges;
@@ -19,10 +20,10 @@ public class GitPanel : EditorWindow
     private struct CommitInfo { public string hash; public string date; public string message; }
     private List<CommitInfo> commitHistory = new List<CommitInfo>();
 
-    [MenuItem("Tools/MrUnknownDE/Git-Tool")]
+    [MenuItem("Tools/MrUnknownDE/GIT Version Control")]
     public static void ShowWindow()
     {
-        GitPanel window = GetWindow<GitPanel>("Source Control");
+        GitPanel window = GetWindow<GitPanel>("GIT Version Control System");
         window.minSize = new Vector2(350, 500);
     }
 
@@ -38,6 +39,10 @@ public class GitPanel : EditorWindow
 
     public void RefreshData()
     {
+        CheckGitInstallation();
+        
+        if (!isGitInstalled) return;
+
         CheckRepoStatus();
         
         if (string.IsNullOrWhiteSpace(commitMessage) || commitMessage.StartsWith("Auto-Save:"))
@@ -48,6 +53,28 @@ public class GitPanel : EditorWindow
         Repaint(); 
     }
 
+    private void CheckGitInstallation()
+    {
+        try
+        {
+            ProcessStartInfo startInfo = new ProcessStartInfo("git", "--version")
+            {
+                UseShellExecute = false, 
+                RedirectStandardOutput = true, 
+                CreateNoWindow = true
+            };
+            using (Process p = Process.Start(startInfo)) 
+            { 
+                p.WaitForExit(); 
+                isGitInstalled = true; 
+            }
+        }
+        catch 
+        { 
+            isGitInstalled = false; 
+        }
+    }
+
     private void SetDefaultCommitMessage()
     {
         commitMessage = $"Auto-Save: {System.DateTime.Now:yyyy-MM-dd HH:mm:ss}";
@@ -56,8 +83,14 @@ public class GitPanel : EditorWindow
     private void OnGUI()
     {
         GUILayout.Space(10);
-        GUILayout.Label("SOURCE CONTROL", EditorStyles.boldLabel);
+        GUILayout.Label("GIT Version Control System", EditorStyles.boldLabel);
         GUILayout.Space(5);
+
+        if (!isGitInstalled)
+        {
+            RenderGitMissingUI();
+            return;
+        }
 
         if (!hasRepo)
         {
@@ -72,6 +105,28 @@ public class GitPanel : EditorWindow
         else RenderHistoryUI();
     }
 
+    private void RenderGitMissingUI()
+    {
+        EditorGUILayout.HelpBox("CRITICAL: Git is not installed or not found in your system's PATH environment variable. This tool requires Git to function.", MessageType.Error);
+        GUILayout.Space(15);
+        
+        GUI.backgroundColor = new Color(0.8f, 0.3f, 0.3f);
+        if (GUILayout.Button("Download Git for Windows", GUILayout.Height(40)))
+        {
+            Application.OpenURL("https://git-scm.com/download/win");
+        }
+        GUI.backgroundColor = Color.white;
+
+        GUILayout.Space(15);
+        EditorGUILayout.HelpBox("⚠️ IMPORTANT:\nAfter installing Git, you must completely restart the Unity Hub and the Unity Editor so Windows can load the new PATH variables.", MessageType.Warning);
+        
+        GUILayout.Space(15);
+        if (GUILayout.Button("↻ Check Again", GUILayout.Height(30)))
+        {
+            RefreshData();
+        }
+    }
+
     private void RenderInitUI()
     {
         EditorGUILayout.HelpBox("No local Git repository found. Initialize current project folder?", MessageType.Warning);
@@ -84,26 +139,78 @@ public class GitPanel : EditorWindow
 
         if (GUILayout.Button("Initialize Repository", GUILayout.Height(30)))
         {
+            bool doMerge = false;
+            bool doForce = false;
+
+            // --- NEU: Intelligenter Remote-Check VOR der Initialisierung ---
+            if (!string.IsNullOrWhiteSpace(remoteUrlInput))
+            {
+                string url = remoteUrlInput.Trim();
+                // Pingt den Server an, um zu schauen, ob dort schon Commits/Branches existieren
+                string remoteStatus = RunGitCommand($"ls-remote \"{url}\"");
+
+                if (!string.IsNullOrWhiteSpace(remoteStatus) && (remoteStatus.Contains("HEAD") || remoteStatus.Contains("refs/heads/")))
+                {
+                    // Der Server hat bereits Daten! Wir stoppen und fragen den User.
+                    int choice = EditorUtility.DisplayDialogComplex(
+                        "Remote Repository Not Empty!",
+                        "The provided remote URL already contains data (e.g. a README, License, or old commits).\n\n" +
+                        "Merge: Combines remote data with your local project safely.\n" +
+                        "Overwrite: FORCES your local state onto the server (DELETES ALL remote data!).",
+                        "Merge (Safe)",
+                        "Cancel",
+                        "Overwrite (Destructive)"
+                    );
+
+                    if (choice == 1) // Cancel
+                    {
+                        UnityEngine.Debug.Log("Git-Tool: Initialization aborted by user to prevent data loss.");
+                        return; // Bricht komplett ab, es wird kein lokales Repo erstellt
+                    }
+                    else if (choice == 0) // Merge
+                    {
+                        doMerge = true;
+                    }
+                    else if (choice == 2) // Overwrite
+                    {
+                        doForce = true;
+                    }
+                }
+            }
+
+            // --- Ab hier läuft der normale Init-Prozess ---
             RunGitCommand("init");
-            
-            // Branch direkt sauber auf "main" setzen (verhindert Konflikte mit alten "master" Defaults)
             RunGitCommand("branch -M main");
 
-            // Remote URL hinzufügen, falls angegeben
             if (!string.IsNullOrWhiteSpace(remoteUrlInput))
             {
                 RunGitCommand($"remote add origin \"{remoteUrlInput.Trim()}\"");
+                
+                if (doMerge)
+                {
+                    // Zieht die Server-Daten sanft rein
+                    RunGitCommand("pull origin main --allow-unrelated-histories --no-edit");
+                }
             }
 
             GenerateUnityGitIgnore();
             RunGitCommand("add .gitignore");
             RunGitCommand("commit -m \"Initial commit (GitIgnore)\"");
 
-            // Initialen Push ausführen, wenn ein Remote existiert
             if (!string.IsNullOrWhiteSpace(remoteUrlInput))
             {
-                RunGitCommand("push -u origin main");
-                UnityEngine.Debug.Log("Git-Tool: Repository initialized and pushed to remote!");
+                if (doForce)
+                {
+                    // Brutaler Force Push (Löscht alte Daten auf dem Gitea)
+                    RunGitCommand("push -u origin main --force");
+                    UnityEngine.Debug.LogWarning("Git-Tool: Remote repository OVERWRITTEN with local state!");
+                }
+                else
+                {
+                    // Normaler Push (funktioniert, da wir vorher gemerged haben, falls nötig)
+                    RunGitCommand("push -u origin main");
+                    UnityEngine.Debug.Log("Git-Tool: Repository initialized and pushed to remote!");
+                }
             }
             else
             {
@@ -118,6 +225,8 @@ public class GitPanel : EditorWindow
     {
         commitMessage = EditorGUILayout.TextField(commitMessage, GUILayout.Height(25));
 
+        EditorGUILayout.BeginHorizontal();
+        
         GUI.backgroundColor = new Color(0.2f, 0.4f, 0.8f); 
         if (GUILayout.Button("✓ Commit & Push", GUILayout.Height(30)))
         {
@@ -131,7 +240,22 @@ public class GitPanel : EditorWindow
             RefreshData();  
             UnityEngine.Debug.Log("Git-Tool: Changes successfully pushed!");
         }
+        
+        GUI.backgroundColor = new Color(0.8f, 0.3f, 0.3f); 
+        if (GUILayout.Button("⎌ Revert All", GUILayout.Width(100), GUILayout.Height(30)))
+        {
+            if (EditorUtility.DisplayDialog("Revert All Changes?", 
+                "Are you absolutely sure you want to discard ALL uncommitted changes?\n\nThis will reset tracked files and delete newly created untracked files. This action CANNOT be undone!", 
+                "Yes, Nuke it!", "Cancel"))
+            {
+                RunGitCommand("reset --hard HEAD");
+                RunGitCommand("clean -fd"); 
+                RefreshData();
+                UnityEngine.Debug.LogWarning("Git-Tool: All uncommitted changes have been destroyed.");
+            }
+        }
         GUI.backgroundColor = Color.white; 
+        EditorGUILayout.EndHorizontal();
 
         GUILayout.Space(10);
         EditorGUILayout.HelpBox("Legend: [M] Modified | [A] Added | [D] Deleted | [??] Untracked", MessageType.Info);
@@ -330,7 +454,7 @@ public class GitSaveListener : UnityEditor.AssetModificationProcessor
         {
             if (EditorWindow.HasOpenInstances<GitPanel>())
             {
-                EditorWindow.GetWindow<GitPanel>().RefreshData();
+                EditorWindow.GetWindow<GitPanel>("GIT Version Control System").RefreshData();
             }
         };
         
