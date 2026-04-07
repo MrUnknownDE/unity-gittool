@@ -44,19 +44,10 @@ Listen up, because the German Copyright Law (*Urheberrechtsgesetz*) doesn't take
 
 This tool is installed manually directly into your Unity project.
 
-### Method 1: Unity Package Manager (Recommended)
-1. Go to the [Releases page](../../releases/latest) of this repository.
-2. Download the latest `de.mrunknownde.gittool-vX.X.X.zip` file.
-3. Extract the ZIP file into a folder on your PC.
-4. Open your Unity Project.
-5. Go to `Window` -> `Package Manager`.
-6. Click the **+** icon in the top left corner and select **Add package from disk...**.
-7. Navigate to the extracted folder, select the `package.json` file, and click Open.
-
-### Method 2: Direct Folder Drop
-1. Download the latest `.zip` release.
+### Direct Folder Drop
+1. Download the latest `mrunknownde-vcc-tools-v20xx-xx-xx.zip` release.
 2. Extract the archive.
-3. Drag and drop the extracted folder directly into the `Packages` directory inside your Unity project's root folder (using Windows Explorer / File Explorer, not inside the Unity Editor window). Unity will automatically compile the tools.
+3. Drag and drop the extracted folder directly into the `Assets` directory inside your Unity project's root folder (using Windows Explorer / File Explorer, not inside the Unity Editor window). Unity will automatically compile the tools.
 
 ---
 
