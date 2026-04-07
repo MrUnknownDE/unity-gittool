@@ -248,6 +248,7 @@ public class GitPanel : EditorWindow
                 UnityEngine.Debug.Log("Git-Tool: Changes successfully pushed!");
                 commitMessage = ""; 
             }
+            LiveSyncPanel.BroadcastGitUpdate();
             RefreshData();
         }
 
