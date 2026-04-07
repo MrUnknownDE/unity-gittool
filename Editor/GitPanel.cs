@@ -23,6 +23,10 @@ public class GitPanel : EditorWindow
     private string[] changedFiles = new string[0];
     private Vector2 scrollPositionChanges;
     private Vector2 scrollPositionHistory;
+    
+    // STATISCH: Damit RunGitCommand darauf zugreifen kann und das Log beim Neuladen erhalten bleibt!
+    private static string gitLogOutput = "";
+    private Vector2 scrollPositionLog;
 
     private int selectedTab = 0;
     private string[] tabNames = { "Changes", "History" };
@@ -38,7 +42,7 @@ public class GitPanel : EditorWindow
     public static void ShowWindow()
     {
         GitPanel window = GetWindow<GitPanel>("GIT Version Control System");
-        window.minSize = new Vector2(380, 600); // Etwas breiter gemacht für den neuen Button
+        window.minSize = new Vector2(380, 650); 
     }
 
     private void OnEnable() 
@@ -80,12 +84,13 @@ public class GitPanel : EditorWindow
         } catch { isGitInstalled = false; }
     }
 
+    // FIX: Nutzt jetzt die aktuelle Unity-API (VersionControlSettings.mode)
     private void CheckUnitySettings()
     {
         settingsCorrect = true;
         settingsWarning = "";
 
-        if (EditorSettings.externalVersionControl != "Visible Meta Files")
+        if (VersionControlSettings.mode != "Visible Meta Files")
         {
             settingsCorrect = false;
             settingsWarning += "• Version Control Mode must be 'Visible Meta Files'\n";
@@ -100,7 +105,7 @@ public class GitPanel : EditorWindow
 
     private void FixUnitySettings()
     {
-        EditorSettings.externalVersionControl = "Visible Meta Files";
+        VersionControlSettings.mode = "Visible Meta Files";
         EditorSettings.serializationMode = SerializationMode.ForceText;
         UnityEngine.Debug.Log("Git-Tool: Unity Project Settings updated for Git compatibility.");
         RefreshData();
@@ -166,17 +171,17 @@ public class GitPanel : EditorWindow
         remoteUrlInput = EditorGUILayout.TextField("Remote URL:", remoteUrlInput);
         if (GUILayout.Button("Initialize Repository", GUILayout.Height(30)))
         {
-            RunGitCommand("init");
-            RunGitCommand("branch -M main");
+            RunGitCommand("init", true);
+            RunGitCommand("branch -M main", true);
             if (!string.IsNullOrWhiteSpace(remoteUrlInput)) {
-                RunGitCommand($"remote add origin \"{remoteUrlInput.Trim()}\"");
-                RunGitCommand("pull origin main --allow-unrelated-histories --no-edit");
+                RunGitCommand($"remote add origin \"{remoteUrlInput.Trim()}\"", true);
+                RunGitCommand("pull origin main --allow-unrelated-histories --no-edit", true);
             }
             GenerateUnityGitIgnore();
             AssetDatabase.Refresh(); 
-            RunGitCommand("add .gitignore");
-            RunGitCommand("commit -m \"Initial commit (GitIgnore)\"");
-            if (!string.IsNullOrWhiteSpace(remoteUrlInput)) RunGitCommand("push -u origin main");
+            RunGitCommand("add .gitignore", true);
+            RunGitCommand("commit -m \"Initial commit (GitIgnore)\"", true);
+            if (!string.IsNullOrWhiteSpace(remoteUrlInput)) RunGitCommand("push -u origin main", true);
             RefreshData();
         }
     }
@@ -192,8 +197,8 @@ public class GitPanel : EditorWindow
             int newIndex = EditorGUILayout.Popup("Switch Branch:", selectedBranchIndex, availableBranches);
             if (EditorGUI.EndChangeCheck() && newIndex != selectedBranchIndex)
             {
-                RunGitCommand($"checkout \"{availableBranches[newIndex]}\"");
-                AssetDatabase.Refresh(); // Unity zwingen, den neuen Code vom anderen Branch zu laden
+                RunGitCommand($"checkout \"{availableBranches[newIndex]}\"", true);
+                AssetDatabase.Refresh(); 
                 RefreshData();
                 return; 
             }
@@ -206,7 +211,7 @@ public class GitPanel : EditorWindow
         {
             if (!string.IsNullOrWhiteSpace(newBranchName))
             {
-                RunGitCommand($"checkout -b \"{newBranchName.Trim()}\"");
+                RunGitCommand($"checkout -b \"{newBranchName.Trim()}\"", true);
                 newBranchName = "";
                 RefreshData();
                 GUI.FocusControl(null); 
@@ -220,18 +225,20 @@ public class GitPanel : EditorWindow
         GUILayout.Space(10);
         commitMessage = EditorGUILayout.TextField(commitMessage, GUILayout.Height(25));
 
-        // --- HAUPTAKTIEN BEREICH ---
         EditorGUILayout.BeginHorizontal();
         
-        // 1. Commit & Push
         GUI.backgroundColor = new Color(0.2f, 0.4f, 0.8f); 
         if (GUILayout.Button("✓ Push", GUILayout.Height(30)))
         {
+            UnityEngine.Debug.Log("Git-Tool: Saving Scenes and Assets before push...");
+            UnityEditor.SceneManagement.EditorSceneManager.SaveOpenScenes();
+            AssetDatabase.SaveAssets();
+
             if (string.IsNullOrWhiteSpace(commitMessage)) SetDefaultCommitMessage();
-            RunGitCommand("add .");
-            RunGitCommand($"commit -m \"{commitMessage}\"");
+            RunGitCommand("add .", true);
+            RunGitCommand($"commit -m \"{commitMessage}\"", true);
             
-            string pushResult = RunGitCommand("push -u origin HEAD");
+            string pushResult = RunGitCommand("push -u origin HEAD", true);
             if (pushResult.Contains("rejected") || pushResult.Contains("fetch first"))
             {
                 UnityEngine.Debug.LogError("Git-Tool: PUSH REJECTED! Jemand anderes hat Änderungen hochgeladen. Bitte klicke zuerst auf 'Pull'.");
@@ -244,35 +251,30 @@ public class GitPanel : EditorWindow
             RefreshData();
         }
 
-        // 2. NEU: PULL (Sync)
-        GUI.backgroundColor = new Color(0.8f, 0.6f, 0.2f); // Orange/Gelb
+        GUI.backgroundColor = new Color(0.8f, 0.6f, 0.2f); 
         if (GUILayout.Button("⬇️ Pull", GUILayout.Width(80), GUILayout.Height(30)))
         {
-            UnityEngine.Debug.Log("Git-Tool: Lade Änderungen vom Server herunter...");
-            string pullResult = RunGitCommand("pull");
-            
-            // Ganz wichtig für Collaboration: Unity zwingen, die fremden Dateien einzulesen!
+            UnityEditor.SceneManagement.EditorSceneManager.SaveOpenScenes();
+            AssetDatabase.SaveAssets();
+
+            string pullResult = RunGitCommand("pull", true);
             AssetDatabase.Refresh(); 
 
             if (pullResult.Contains("CONFLICT"))
             {
-                UnityEngine.Debug.LogError("Git-Tool: MERGE CONFLICT! Du und ein Freund haben dieselbe Datei bearbeitet. Bitte in VS Code auflösen!");
+                UnityEngine.Debug.LogError("Git-Tool: MERGE CONFLICT! Bitte in VS Code auflösen!");
                 EditorUtility.DisplayDialog("Merge Conflict", "Es gibt Konflikte mit den Server-Daten!\n\nGit konnte die Änderungen nicht automatisch zusammenführen. Bitte öffne die roten Dateien in deinem Code-Editor und löse den Konflikt manuell auf.", "OK");
-            }
-            else
-            {
-                UnityEngine.Debug.Log("Git-Tool: Repository erfolgreich synchronisiert.");
             }
             RefreshData();
         }
 
-        // 3. Revert
         GUI.backgroundColor = new Color(0.8f, 0.3f, 0.3f); 
         if (GUILayout.Button("⎌ Revert", GUILayout.Width(80), GUILayout.Height(30)))
         {
             if (EditorUtility.DisplayDialog("Revert Changes?", "Discard ALL uncommitted changes?", "Yes", "Cancel")) {
-                RunGitCommand("reset --hard HEAD"); RunGitCommand("clean -fd"); 
-                AssetDatabase.Refresh(); // Unity die alten Daten zeigen
+                RunGitCommand("reset --hard HEAD", true); 
+                RunGitCommand("clean -fd", true); 
+                AssetDatabase.Refresh(); 
                 RefreshData();
             }
         }
@@ -288,6 +290,17 @@ public class GitPanel : EditorWindow
         scrollPositionChanges = EditorGUILayout.BeginScrollView(scrollPositionChanges, "box");
         if (changedFiles.Length == 0) GUILayout.Label("No changes.");
         else RenderFileList(changedFiles);
+        EditorGUILayout.EndScrollView();
+
+        GUILayout.Space(5);
+        EditorGUILayout.BeginHorizontal();
+        GUILayout.Label("GIT CONSOLE", EditorStyles.boldLabel);
+        if (GUILayout.Button("Clear", GUILayout.Width(50))) gitLogOutput = "";
+        EditorGUILayout.EndHorizontal();
+
+        scrollPositionLog = EditorGUILayout.BeginScrollView(scrollPositionLog, "box", GUILayout.Height(120));
+        GUIStyle logStyle = new GUIStyle(EditorStyles.label) { wordWrap = true, fontSize = 10 };
+        GUILayout.Label(string.IsNullOrEmpty(gitLogOutput) ? "Ready." : gitLogOutput, logStyle);
         EditorGUILayout.EndScrollView();
     }
 
@@ -396,14 +409,33 @@ public class GitPanel : EditorWindow
         if (!File.Exists(path)) File.WriteAllText(path, ".idea\n.vs\nbin\nobj\n/Library\n/Temp\n/UserSettings\n/Configs\n/*.csproj\n/*.sln\n/Logs\n/Packages/*\n!/Packages/manifest.json\n!/Packages/packages-lock.json\n~UnityDirMonSyncFile~*");
     }
 
-    public static string RunGitCommand(string args) {
+    // FIX: Methode ist wieder static!
+    public static string RunGitCommand(string args, bool logAction = false) {
         try {
-            ProcessStartInfo si = new ProcessStartInfo("git", args) { WorkingDirectory = Path.GetFullPath(Path.Combine(Application.dataPath, "..")), UseShellExecute = false, RedirectStandardOutput = true, RedirectStandardError = true, CreateNoWindow = true };
+            ProcessStartInfo si = new ProcessStartInfo("git", args) { 
+                WorkingDirectory = Path.GetFullPath(Path.Combine(Application.dataPath, "..")), 
+                UseShellExecute = false, 
+                RedirectStandardOutput = true, 
+                RedirectStandardError = true, 
+                CreateNoWindow = true 
+            };
+            
             using (Process p = Process.Start(si)) { 
                 string o = p.StandardOutput.ReadToEnd(); 
-                string e = p.StandardError.ReadToEnd();
+                string e = p.StandardError.ReadToEnd(); 
                 p.WaitForExit(); 
-                return o + " " + e; 
+                string result = o + (string.IsNullOrWhiteSpace(e) ? "" : "\n" + e);
+                
+                if (logAction) {
+                    string time = System.DateTime.Now.ToString("HH:mm:ss");
+                    string entry = $"[{time}] > git {args}\n";
+                    if (!string.IsNullOrWhiteSpace(result)) entry += result.Trim() + "\n\n";
+                    
+                    gitLogOutput = entry + gitLogOutput; 
+                    if (gitLogOutput.Length > 10000) gitLogOutput = gitLogOutput.Substring(0, 10000); 
+                }
+                
+                return result; 
             }
         } catch { return ""; }
     }
